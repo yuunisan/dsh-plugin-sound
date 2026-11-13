@@ -1,0 +1,66 @@
+{
+  "name": "dsh-plugin-sound",
+  "version": "0.1.0",
+  "description": "Play a notification sound when a DeepSeek Harness turn finishes. Bring your own WAV/OGG/MP3 or paste a direct audio URL.",
+  "type": "module",
+  "license": "MIT",
+  "author": "yuunisan",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuunisan/dsh-plugin-sound.git"
+  },
+  "homepage": "https://github.com/yuunisan/dsh-plugin-sound#readme",
+  "bugs": {
+    "url": "https://github.com/yuunisan/dsh-plugin-sound/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "notification",
+    "sound",
+    "audio"
+  ],
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-rc.1 <0.3.0"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build && npm run smoke"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "tsdown": "^0.15.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

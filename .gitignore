@@ -1,0 +1,6 @@
+# lib/ is committed on purpose: `install_bundle github:yuunisan/dsh-plugin-sound`
+# then needs no build step on the user's machine.
+node_modules/
+*.log
+.DS_Store
+*.tgz

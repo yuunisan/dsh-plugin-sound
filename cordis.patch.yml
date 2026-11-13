@@ -1,0 +1,8 @@
+# dsh-plugin-sound — profile bundle patch.
+#
+# One row: the plugin package itself. The Node half is a no-op (see
+# src/index.ts); the browser half in src/client/ carries the feature, because
+# only the page can play audio and read the user's window focus.
+- insert:
+    - id: sound-notify
+      name: dsh-plugin-sound
