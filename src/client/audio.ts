@@ -151,24 +151,43 @@ export class SoundPlayer {
 
   /**
    * Play a remote audio URL.
+   *
+   * Deliberately a plain `<audio>`: no `crossOrigin`, because most hosts that
+   * serve a loose `.mp3` send no `Access-Control-Allow-Origin`, and asking for
+   * CORS turns a playable file into a load error. Nothing here samples the
+   * bytes, so the media element's own security model is the right one.
    * @param url - absolute http(s) URL.
    * @param volume - gain, 0–1.
-   * @returns whether playback started (a rejected promise reports `false`).
+   * @returns whether playback started, plus a user-facing reason when it did not.
    */
-  async playUrl(url: string, volume: number): Promise<boolean> {
+  async playUrl(url: string, volume: number): Promise<{ ok: boolean, reason?: string }> {
     this.stop()
-    try {
-      const element = new Audio()
-      element.crossOrigin = 'anonymous'
-      element.preload = 'auto'
-      element.volume = Math.min(1, Math.max(0, volume))
-      element.src = url
-      this.element = element
-      await element.play()
-      return true
-    } catch {
-      return false
-    }
+    const element = new Audio()
+    element.preload = 'auto'
+    element.volume = Math.min(1, Math.max(0, volume))
+    element.src = url
+    this.element = element
+
+    return await new Promise((resolve) => {
+      let settled = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const finish = (result: { ok: boolean, reason?: string }): void => {
+        if (settled) return
+        settled = true
+        if (timer !== undefined) clearTimeout(timer)
+        element.removeEventListener('playing', onPlaying)
+        element.removeEventListener('error', onError)
+        resolve(result)
+      }
+      const onPlaying = (): void => { finish({ ok: true }) }
+      const onError = (): void => { finish({ ok: false, reason: mediaErrorText(element.error) }) }
+      element.addEventListener('playing', onPlaying)
+      element.addEventListener('error', onError)
+      timer = setTimeout(() => { finish({ ok: false, reason: 'Timed out loading that URL.' }) }, 12_000)
+      // Autoplay policy and a not-yet-supported source both reject here; the
+      // `error` event carries the media-specific detail when it exists.
+      void element.play().catch((error: unknown) => { finish({ ok: false, reason: playRejectionText(error) }) })
+    })
   }
 
   /** Forget the decoded clip (the stored blob changed or was removed). */
@@ -189,4 +208,22 @@ export class SoundPlayer {
     sharedContext = undefined
     void context?.close().catch(() => {})
   }
+}
+
+/** Turn a `MediaError` into advice the user can act on. */
+function mediaErrorText(error: MediaError | null): string {
+  switch (error?.code) {
+    case 2: return 'Network error loading that URL — the host may be down or blocking hotlinks.'
+    case 3: return 'That URL could not be decoded. It may be a web page rather than an audio file.'
+    case 4: return 'That URL is not a supported audio file — use a direct .mp3/.ogg/.wav link.'
+    default: return 'That URL could not be played.'
+  }
+}
+
+/** Turn a rejected `play()` into advice the user can act on. */
+function playRejectionText(error: unknown): string {
+  const name = error instanceof Error ? error.name : ''
+  if (name === 'NotAllowedError') return 'The browser blocked playback — click anywhere on the page once, then retry.'
+  if (name === 'NotSupportedError') return 'That URL is not a supported audio file — use a direct .mp3/.ogg/.wav link.'
+  return 'That URL could not be played.'
 }

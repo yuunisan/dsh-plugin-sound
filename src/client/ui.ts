@@ -10,7 +10,7 @@
  * bundle free of runtime dependencies.
  */
 
-import type { SoundSettings, SoundSource } from './settings.ts'
+import { looksLikeAudioUrl, type SoundSettings, type SoundSource } from './settings.ts'
 
 /** Callbacks the page wires to storage and playback. */
 export interface PanelOptions {
@@ -24,8 +24,8 @@ export interface PanelOptions {
   clearFile(): Promise<void>
   /** Label for the imported clip, or '' when none is stored. */
   clipLabel(): string
-  /** Play the current sound. */
-  test(): Promise<void>
+  /** Play the current sound; resolves to an error message or null. */
+  test(): Promise<string | null>
 }
 
 const STYLE = `
@@ -205,6 +205,12 @@ export function mountSettingsPanel(options: PanelOptions): () => void {
     urlInput.value = settings.url
     urlInput.addEventListener('change', () => { update({ url: urlInput.value, source: 'url' }) })
     urlRow.append(urlLabel, urlInput)
+    if (settings.url !== '' && !looksLikeAudioUrl(settings.url)) {
+      const urlHint = document.createElement('div')
+      urlHint.className = 'hint'
+      urlHint.textContent = 'That looks like a web page. Open it, copy the direct audio link (ending in .mp3, .ogg, or .wav), and paste that instead.'
+      urlRow.append(urlHint)
+    }
 
     const volumeRow = document.createElement('div')
     volumeRow.className = 'row column'
@@ -253,7 +259,12 @@ export function mountSettingsPanel(options: PanelOptions): () => void {
     testButton.className = 'action primary'
     testButton.type = 'button'
     testButton.textContent = 'Test sound'
-    testButton.addEventListener('click', () => { void options.test() })
+    testButton.addEventListener('click', () => {
+      void options.test().then((message) => {
+        if (message === null) setStatus('Played.')
+        else setStatus(message, true)
+      })
+    })
     actions.append(testButton)
 
     const hint = document.createElement('div')

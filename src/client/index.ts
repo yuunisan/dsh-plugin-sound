@@ -43,12 +43,25 @@ export function apply(ctx: PluginContext): void {
     }
   }
 
-  /** Play whichever sound the settings select, falling back to the chime. */
-  const ring = async (): Promise<void> => {
+  /**
+   * Play whichever sound the settings select.
+   * @param explicit - true for the Test button: a failing URL must report why
+   *   instead of silently masking itself with the built-in chime.
+   * @returns whether a sound played, plus the reason when it did not.
+   */
+  const ring = async (explicit = false): Promise<{ ok: boolean, reason?: string }> => {
     if (settings.source === 'url') {
-      if (isPlayableUrl(settings.url) && await player.playUrl(settings.url, settings.volume)) return
+      if (!isPlayableUrl(settings.url)) {
+        if (explicit) return { ok: false, reason: 'Enter an absolute http(s) audio URL first.' }
+        player.playBuiltin(settings.volume)
+        return { ok: false }
+      }
+      const result = await player.playUrl(settings.url, settings.volume)
+      if (result.ok) return result
+      if (explicit) return result
+      // For a real turn end, a dead URL must not mean silence.
       player.playBuiltin(settings.volume)
-      return
+      return result
     }
     if (settings.source === 'file' && clip !== undefined) {
       if (!player.matches(clip.blob)) {
@@ -56,12 +69,13 @@ export function apply(ctx: PluginContext): void {
           await player.prepare(clip.blob)
         } catch {
           player.playBuiltin(settings.volume)
-          return
+          return { ok: true }
         }
       }
-      if (player.playClip(settings.volume)) return
+      if (player.playClip(settings.volume)) return { ok: true }
     }
     player.playBuiltin(settings.volume)
+    return { ok: true }
   }
 
   const unsubscribe = ctx.remote.$on('api-session/status', (sessionId: string, running: boolean) => {
@@ -117,7 +131,10 @@ export function apply(ctx: PluginContext): void {
       player.reset()
     },
     clipLabel: () => clip === undefined ? '' : `${clip.name} · ${(clip.durationMs / 1000).toFixed(2)}s`,
-    test: ring,
+    test: async () => {
+      const result = await ring(true)
+      return result.ok ? null : (result.reason ?? 'That sound could not be played.')
+    },
   })
 
   ctx.effect(() => () => {

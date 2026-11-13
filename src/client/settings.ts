@@ -92,6 +92,24 @@ export function isPlayableUrl(value: string): boolean {
   }
 }
 
+/** Extensions a browser can usually play directly. */
+const AUDIO_EXTENSION = /\.(mp3|ogg|oga|wav|m4a|aac|flac|opus|weba|webm)$/i
+
+/**
+ * Heuristic: does this URL point at an audio file rather than a web page?
+ * Used only for advice in the UI — a CDN URL without an extension can still
+ * play, so a `false` result never blocks the user.
+ * @param value - candidate URL.
+ * @returns true when the path ends in a known audio extension.
+ */
+export function looksLikeAudioUrl(value: string): boolean {
+  try {
+    return AUDIO_EXTENSION.test(new URL(value).pathname)
+  } catch {
+    return false
+  }
+}
+
 /**
  * Decide whether the finished turn should ring.
  * @param settings - current settings.

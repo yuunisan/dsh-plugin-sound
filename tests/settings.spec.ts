@@ -3,6 +3,7 @@ import {
   DEFAULT_SETTINGS,
   fileRejection,
   isPlayableUrl,
+  looksLikeAudioUrl,
   MAX_SOUND_BYTES,
   normalizeSettings,
   skipReason,
@@ -45,6 +46,20 @@ describe('isPlayableUrl', () => {
     expect(isPlayableUrl('javascript:alert(1)')).toBe(false)
     expect(isPlayableUrl('file:///C:/a.wav')).toBe(false)
     expect(isPlayableUrl('not a url')).toBe(false)
+  })
+})
+
+describe('looksLikeAudioUrl', () => {
+  it('recognises direct audio links', () => {
+    expect(looksLikeAudioUrl('https://cdn.test/boom.mp3')).toBe(true)
+    expect(looksLikeAudioUrl('https://cdn.test/a/b/ding.OGG')).toBe(true)
+    expect(looksLikeAudioUrl('https://cdn.test/x.wav?token=1')).toBe(true)
+  })
+
+  it('flags page links and extensionless paths as suspicious', () => {
+    expect(looksLikeAudioUrl('https://www.myinstants.com/en/instant/vine-boom-12345/')).toBe(false)
+    expect(looksLikeAudioUrl('https://cdn.test/stream?id=7')).toBe(false)
+    expect(looksLikeAudioUrl('nonsense')).toBe(false)
   })
 })
 
