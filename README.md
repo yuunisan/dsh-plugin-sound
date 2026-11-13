@@ -11,18 +11,20 @@ Play a notification sound in the DeepSeek Harness web GUI when a turn finishes �
 
 The plugin is a profile bundle: it declares a `dsh.bundle.patch`, so the Plugins page can install and toggle it like any other bundle.
 
-```bash
-# from npm (once published)
-npm install dsh-plugin-sound
+Either:
 
-# or straight from this repository, pinned to a reviewed commit
-gh repo clone yuunisan/dsh-plugin-sound
+- **Settings → Plugins → Install** and paste `dsh-plugin-sound`, or
+- add the dependency to `~/.dsh/profiles/<profile>/package.json` and run `pnpm install` in that directory:
+
+```json
+{
+  "dependencies": {
+    "dsh-plugin-sound": "^0.1.5"
+  }
+}
 ```
 
-Then either:
-
-- **Settings → Plugins → Install** and paste `dsh-plugin-sound` (or the git URL / a local tarball), or
-- add the row yourself in `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+The bundle patch ships the Loader row, so installing the bundle is normally enough. If you are adding the row by hand instead, it goes in `~/.dsh/profiles/<profile>/cordis.patch.yml`:
 
 ```yaml
 - insert:
@@ -30,11 +32,7 @@ Then either:
       name: dsh-plugin-sound
 ```
 
-The bundle patch ships that row, so installing the bundle is normally enough.
-
-While the package is pre-1.0, prefer pinning the dependency to a commit rather
-than tracking `main`, so an update is a decision instead of a surprise. In
-`~/.dsh/profiles/<profile>/package.json`:
+Prefer not to depend on the registry? Pin a reviewed commit, so an update is a decision instead of a surprise:
 
 ```json
 {
@@ -45,6 +43,22 @@ than tracking `main`, so an update is a decision instead of a surprise. In
 ```
 
 Restart the app (or let the profile's HMR reload) and a 🔔 button appears at the bottom-right of the page.
+
+## Update
+
+With a range in `package.json` (`^0.1.5`, which accepts `0.1.x` but not `0.2.0`), one command moves you to the newest release:
+
+```bash
+pnpm update dsh-plugin-sound
+```
+
+`pnpm install` on its own will not move it — it honours the lockfile. If your dependency is an exact pin (`"0.1.5"`), `pnpm add dsh-plugin-sound` reports "Already up to date" and leaves it there; name the version you want instead:
+
+```bash
+pnpm add dsh-plugin-sound@0.1.5
+```
+
+Either style is fine. A range takes fixes automatically; an exact pin makes every update deliberate, which is a reasonable default for a plugin that runs inside the host process.
 
 ## Use
 
@@ -122,7 +136,15 @@ Built against the DSH 0.2.x browser-plugin surface. `package.json` declares a pe
 - `v*` tags are the reviewed states, and `.github/workflows/publish.yml` publishes them with npm provenance so the tarball is tied to this repository and commit.
 - An install runs the package's Node half inside the DSH host process (and its browser half as same-origin page script). Treat every plugin — this one included — as code you are granting that access.
 
-Publishing the name `dsh-plugin-sound` on npm is what makes the bare-name install in this README safe; until it is published, install from the git spec.
+The npm package is published from this repository by CI, so `npm view dsh-plugin-sound repository.url` should always point back here. Check that field before installing anything that claims to be this plugin.
+
+## Troubleshooting
+
+- **No 🔔 button.** Check that your DSH is 0.2.x and that `dsh-plugin-sound` appears in `dsh.profile.bundles` in `~/.dsh/profiles/<profile>/package.json`. Restart the app rather than refreshing: the desktop profile has no live patch reload.
+- **Button appears, but no sound at a turn end.** Browsers block audio until the page has had a user gesture. Click anywhere on the page once, then press **Test sound**.
+- **A remote URL stays silent.** It must be a *direct* audio URL, not a page that links to one, and it must be `https` (plain `http` is accepted only for localhost).
+- **"That clip is Ns — keep notification sounds under 3s".** Both imported files and URLs are capped at 3 s; that is deliberate, so a stray URL cannot ring for minutes.
+- **"That file has no readable audio duration".** The file's container does not declare a length; convert it to WAV, OGG, or MP3 and import again.
 
 ## License
 
