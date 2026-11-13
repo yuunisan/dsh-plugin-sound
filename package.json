@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-sound",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Play a notification sound when a DeepSeek Harness turn finishes. Bring your own WAV/OGG/MP3 or paste a direct audio URL.",
   "type": "module",
   "license": "MIT",

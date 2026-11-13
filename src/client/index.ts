@@ -56,7 +56,7 @@ export function apply(ctx: PluginContext): void {
   const ring = async (explicit = false): Promise<{ ok: boolean, reason?: string }> => {
     if (settings.source === 'url') {
       if (!isPlayableUrl(settings.url)) {
-        if (explicit) return { ok: false, reason: 'Enter an absolute http(s) audio URL first.' }
+        if (explicit) return { ok: false, reason: 'Enter an https audio URL first (plain http is only allowed for localhost).' }
         player.playBuiltin(settings.volume)
         return { ok: false }
       }
