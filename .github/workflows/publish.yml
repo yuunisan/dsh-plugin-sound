@@ -1,0 +1,42 @@
+# Publish a tagged release to npm with provenance.
+#
+# Provenance is only issued to a build that runs in a supported CI provider, so
+# this workflow — not a laptop — is the publish path. It uses npm's trusted
+# publishing (OIDC): no `NPM_TOKEN` secret exists to leak.
+#
+# One-time setup on npmjs.com, before the first tag:
+#   Package settings → Trusted publishing → GitHub Actions
+#   Organization: yuunisan   Repository: dsh-plugin-sound
+#   Workflow filename: publish.yml   Environment: (none)
+# Then `git tag v0.1.2 && git push origin v0.1.2`.
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write # OIDC: trusted publishing + provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm >= 11.5.1; the Node 22 image ships an older one.
+      - run: npm install --global npm@latest
+      - run: npm ci
+      - name: Tag matches package.json version
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json ${version}"
+            exit 1
+          fi
+      - run: npm publish --provenance --access public

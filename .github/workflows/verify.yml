@@ -1,0 +1,44 @@
+# Gate every push and pull request on the checks a release depends on.
+#
+# The last step is the one that matters for this repository: `lib/` is
+# committed, and an install runs `lib/` — never a local build. Rebuilding here
+# and failing on any difference means the shipped bundle cannot drift from the
+# source a reviewer reads.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck, test, build, lib parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run smoke
+      - name: Committed lib/ matches a fresh build
+        run: |
+          if [ -n "$(git status --porcelain -- lib)" ]; then
+            echo "::error::lib/ is stale. Run 'npm run build' and commit the result."
+            git --no-pager diff --stat -- lib
+            git --no-pager diff -- lib | head -200
+            exit 1
+          fi

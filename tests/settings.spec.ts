@@ -40,12 +40,28 @@ describe('normalizeSettings', () => {
 })
 
 describe('isPlayableUrl', () => {
-  it('accepts http and https only', () => {
+  it('accepts any https URL', () => {
     expect(isPlayableUrl('https://cdn.test/a.mp3')).toBe(true)
-    expect(isPlayableUrl('http://cdn.test/a.mp3')).toBe(true)
+    expect(isPlayableUrl('https://cdn.test/stream?id=7')).toBe(true)
+  })
+
+  it('accepts plain http only for the local machine', () => {
+    expect(isPlayableUrl('http://localhost:3000/ding.mp3')).toBe(true)
+    expect(isPlayableUrl('http://127.0.0.1:3000/ding.mp3')).toBe(true)
+    expect(isPlayableUrl('http://127.0.0.2/ding.mp3')).toBe(true)
+    expect(isPlayableUrl('http://[::1]:3000/ding.mp3')).toBe(true)
+    // A remote or LAN host over plain http would be fetched in the clear.
+    expect(isPlayableUrl('http://cdn.test/a.mp3')).toBe(false)
+    expect(isPlayableUrl('http://192.168.1.5/a.mp3')).toBe(false)
+  })
+
+  it('rejects other schemes, embedded credentials, and junk', () => {
     expect(isPlayableUrl('javascript:alert(1)')).toBe(false)
     expect(isPlayableUrl('file:///C:/a.wav')).toBe(false)
+    expect(isPlayableUrl('data:audio/mp3;base64,AAAA')).toBe(false)
+    expect(isPlayableUrl('https://user:secret@cdn.test/a.mp3')).toBe(false)
     expect(isPlayableUrl('not a url')).toBe(false)
+    expect(isPlayableUrl('')).toBe(false)
   })
 })
 

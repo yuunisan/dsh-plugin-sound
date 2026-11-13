@@ -12,6 +12,8 @@
  * no third-party licence obligation.
  */
 
+import { MAX_SOUND_MS } from './settings.ts'
+
 /** A decoded clip, cached until the stored blob changes. */
 interface DecodedClip {
   readonly buffer: AudioBuffer
@@ -49,6 +51,57 @@ export async function decodeClip(blob: Blob): Promise<DecodedClip> {
   return { buffer, durationMs: Math.round(buffer.duration * 1000) }
 }
 
+/**
+ * Read a clip's length from its container metadata, without decoding a sample.
+ *
+ * The 2 MB import cap bounds compressed bytes, not decoded ones: a small, very
+ * low-bitrate file can expand to hundreds of megabytes of PCM. Reading
+ * `duration` first means an over-long file is refused before the decoder —
+ * and the `AudioBuffer` it would allocate — ever runs.
+ * @param blob - audio file contents.
+ * @returns the reported length in milliseconds.
+ * @throws when the file has no readable duration or is not audio.
+ */
+export function probeDuration(blob: Blob): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const element = new Audio()
+    let settled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const finish = (complete: () => void): void => {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) clearTimeout(timer)
+      element.removeEventListener('loadedmetadata', onMetadata)
+      element.removeEventListener('error', onError)
+      URL.revokeObjectURL(url)
+      try {
+        element.removeAttribute('src')
+        element.load()
+      } catch {
+        // The element was never given a source.
+      }
+      complete()
+    }
+    const onMetadata = (): void => {
+      const durationMs = Math.round(element.duration * 1000)
+      if (!Number.isFinite(durationMs) || durationMs <= 0) {
+        finish(() => reject(new Error('no duration metadata')))
+        return
+      }
+      finish(() => resolve(durationMs))
+    }
+    const onError = (): void => { finish(() => reject(new Error('not readable as audio'))) }
+
+    timer = setTimeout(() => { finish(() => reject(new Error('timed out reading metadata'))) }, 5_000)
+    element.preload = 'metadata'
+    element.addEventListener('loadedmetadata', onMetadata)
+    element.addEventListener('error', onError)
+    element.src = url
+  })
+}
+
 /** Plays at most one sound at a time, so a burst of finishes cannot stack. */
 export class SoundPlayer {
   private decoded: DecodedClip | undefined
@@ -81,16 +134,22 @@ export class SoundPlayer {
       // Already stopped.
     }
     this.source = undefined
-    if (this.element !== undefined) {
-      try {
-        this.element.pause()
-        this.element.removeAttribute('src')
-        this.element.load()
-      } catch {
-        // Element already torn down.
-      }
-      this.element = undefined
+    if (this.element !== undefined) this.stopElement(this.element)
+  }
+
+  /**
+   * Tear down one specific element, even when a newer sound has replaced it.
+   * @param element - the element this call owns.
+   */
+  private stopElement(element: HTMLAudioElement): void {
+    try {
+      element.pause()
+      element.removeAttribute('src')
+      element.load()
+    } catch {
+      // Element already torn down.
     }
+    if (this.element === element) this.element = undefined
   }
 
   /**
@@ -156,6 +215,11 @@ export class SoundPlayer {
    * serve a loose `.mp3` send no `Access-Control-Allow-Origin`, and asking for
    * CORS turns a playable file into a load error. Nothing here samples the
    * bytes, so the media element's own security model is the right one.
+   *
+   * The clip is held to the same length limit as an imported file. Duration is
+   * read from metadata before any playback, and a watchdog stops the element at
+   * the cap, so a host that streams an endless (or very long) file cannot keep
+   * ringing — or keep downloading — past the limit.
    * @param url - absolute http(s) URL.
    * @param volume - gain, 0–1.
    * @returns whether playback started, plus a user-facing reason when it did not.
@@ -163,30 +227,50 @@ export class SoundPlayer {
   async playUrl(url: string, volume: number): Promise<{ ok: boolean, reason?: string }> {
     this.stop()
     const element = new Audio()
-    element.preload = 'auto'
+    // Metadata first: a clip this code is about to refuse must not be fetched whole.
+    element.preload = 'metadata'
     element.volume = Math.min(1, Math.max(0, volume))
-    element.src = url
     this.element = element
 
     return await new Promise((resolve) => {
       let settled = false
-      let timer: ReturnType<typeof setTimeout> | undefined
+      let loadTimer: ReturnType<typeof setTimeout> | undefined
+      let capTimer: ReturnType<typeof setTimeout> | undefined
       const finish = (result: { ok: boolean, reason?: string }): void => {
         if (settled) return
         settled = true
-        if (timer !== undefined) clearTimeout(timer)
+        if (loadTimer !== undefined) clearTimeout(loadTimer)
+        element.removeEventListener('loadedmetadata', onMetadata)
         element.removeEventListener('playing', onPlaying)
         element.removeEventListener('error', onError)
+        if (!result.ok) {
+          if (capTimer !== undefined) clearTimeout(capTimer)
+          this.stopElement(element)
+        }
         resolve(result)
+      }
+      const onMetadata = (): void => {
+        const seconds = element.duration
+        if (Number.isFinite(seconds) && seconds * 1000 > MAX_SOUND_MS) {
+          finish({
+            ok: false,
+            reason: `That clip is ${seconds.toFixed(1)}s — keep notification sounds under ${MAX_SOUND_MS / 1000}s.`,
+          })
+          return
+        }
+        // A live stream reports no finite duration; the watchdog below still bounds it.
+        capTimer = setTimeout(() => { this.stopElement(element) }, MAX_SOUND_MS)
+        // Autoplay policy and a not-yet-supported source both reject here; the
+        // `error` event carries the media-specific detail when it exists.
+        void element.play().catch((error: unknown) => { finish({ ok: false, reason: playRejectionText(error) }) })
       }
       const onPlaying = (): void => { finish({ ok: true }) }
       const onError = (): void => { finish({ ok: false, reason: mediaErrorText(element.error) }) }
+      element.addEventListener('loadedmetadata', onMetadata)
       element.addEventListener('playing', onPlaying)
       element.addEventListener('error', onError)
-      timer = setTimeout(() => { finish({ ok: false, reason: 'Timed out loading that URL.' }) }, 12_000)
-      // Autoplay policy and a not-yet-supported source both reject here; the
-      // `error` event carries the media-specific detail when it exists.
-      void element.play().catch((error: unknown) => { finish({ ok: false, reason: playRejectionText(error) }) })
+      loadTimer = setTimeout(() => { finish({ ok: false, reason: 'Timed out loading that URL.' }) }, 12_000)
+      element.src = url
     })
   }
 

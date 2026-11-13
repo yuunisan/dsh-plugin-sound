@@ -78,18 +78,40 @@ export function normalizeSettings(raw: unknown): SoundSettings {
   }
 }
 
+/** Host names that always name the local machine. */
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+
+/** `127.0.0.0/8`, the whole IPv4 loopback range. */
+const IPV4_LOOPBACK = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/
+
+/** Whether a URL host points at this machine, for the plain-http exception below. */
+function isLoopbackHost(hostname: string): boolean {
+  // `new URL` keeps IPv6 hosts in brackets and allows a trailing root dot.
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '')
+  return LOOPBACK_HOSTS.has(host) || IPV4_LOOPBACK.test(host)
+}
+
 /**
  * Whether a string is a URL this plugin is willing to hand to an `<audio>`.
+ *
+ * `https` anywhere; plain `http` only for the local machine, so a notification
+ * sound is never fetched in the clear from a remote host. A URL carrying
+ * credentials is refused — a media element would send them to whatever host
+ * answers.
  * @param value - candidate string.
- * @returns true for absolute http(s) URLs only.
+ * @returns true for an acceptable absolute URL.
  */
 export function isPlayableUrl(value: string): boolean {
+  let url: URL
   try {
-    const url = new URL(value)
-    return url.protocol === 'https:' || url.protocol === 'http:'
+    url = new URL(value)
   } catch {
     return false
   }
+  if (url.username !== '' || url.password !== '') return false
+  if (url.protocol === 'https:') return true
+  if (url.protocol !== 'http:') return false
+  return isLoopbackHost(url.hostname)
 }
 
 /** Extensions a browser can usually play directly. */

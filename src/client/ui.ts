@@ -10,7 +10,7 @@
  * bundle free of runtime dependencies.
  */
 
-import { looksLikeAudioUrl, type SoundSettings, type SoundSource } from './settings.ts'
+import { isPlayableUrl, looksLikeAudioUrl, type SoundSettings, type SoundSource } from './settings.ts'
 
 /** Callbacks the page wires to storage and playback. */
 export interface PanelOptions {
@@ -205,7 +205,12 @@ export function mountSettingsPanel(options: PanelOptions): () => void {
     urlInput.value = settings.url
     urlInput.addEventListener('change', () => { update({ url: urlInput.value, source: 'url' }) })
     urlRow.append(urlLabel, urlInput)
-    if (settings.url !== '' && !looksLikeAudioUrl(settings.url)) {
+    if (settings.url !== '' && !isPlayableUrl(settings.url)) {
+      const urlHint = document.createElement('div')
+      urlHint.className = 'hint'
+      urlHint.textContent = 'Use an https:// link. Plain http is accepted only for localhost, and a URL carrying a username or password is refused.'
+      urlRow.append(urlHint)
+    } else if (settings.url !== '' && !looksLikeAudioUrl(settings.url)) {
       const urlHint = document.createElement('div')
       urlHint.className = 'hint'
       urlHint.textContent = 'That looks like a web page. Open it, copy the direct audio link (ending in .mp3, .ogg, or .wav), and paste that instead.'
